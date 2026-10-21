@@ -74,7 +74,7 @@ function toast(msg) {
   clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 1800);
 }
 const dlg = $('#dlg');
-function openDlg(html) {
+function openDlg(html, mount) {
   return new Promise(resolve => {
     dlg.innerHTML = `<form method="dialog" class="dlg">${html}</form>`;
     dlg.onclose = () => resolve(dlg.returnValue === 'ok' ? new FormData($('form', dlg)) : null);
@@ -82,6 +82,7 @@ function openDlg(html) {
     $('form', dlg).addEventListener('submit', e => { if (e.submitter?.value === 'ok') dlg.returnValue = 'ok'; });
     $$('[data-close]', dlg).forEach(b => b.onclick = () => dlg.close());
     dlg.showModal();
+    mount?.($('form', dlg));
   });
 }
 const confirmDlg = async (msg) => !!(await openDlg(`<h3>${esc(msg)}</h3><div class="btns"><button class="btn" value="cancel">Отмена</button><button class="btn danger" value="ok">Удалить</button></div>`));
@@ -220,29 +221,29 @@ async function linkForm(l) {
 }
 
 async function dataDlg() {
-  const f = await openDlg(`<h3>Данные</h3>
-    <p class="hint">Всё хранится в вашем браузере на этом устройстве. Чтобы не потерять книги и ссылки или перенести их на другое устройство — сделайте экспорт и сохраните файл.</p>
-    <div class="btns" style="justify-content:flex-start"><button type="button" class="btn primary" id="exp">Экспорт в файл</button><label class="btn" style="display:inline-grid;place-items:center;cursor:pointer">Импорт<input type="file" id="imp" accept=".json,application/json" hidden></label></div>
-    <div class="btns"><button class="btn" value="cancel">Закрыть</button></div>`);
-  return f;
+  await openDlg(`<h3>Данные</h3>
+    <p class="hint">Всё хранится в браузере на этом устройстве. Чтобы перенести книги и ссылки или сделать копию — скопируйте текст ниже и сохраните его в заметках. Для восстановления вставьте его во второе поле или выберите файл.</p>
+    <label>Резервная копия<textarea id="expTxt" readonly style="min-height:90px;font-size:12px"></textarea></label>
+    <div class="btns" style="justify-content:flex-start"><button type="button" class="btn primary" id="exp">Копировать копию</button></div>
+    <label>Восстановить из копии<textarea id="impTxt" style="min-height:70px;font-size:12px" placeholder="Вставьте сюда скопированный текст"></textarea></label>
+    <div class="btns" style="justify-content:flex-start"><button type="button" class="btn" id="imp">Восстановить</button><label class="btn" style="display:inline-grid;place-items:center;cursor:pointer">Из файла<input type="file" id="impFile" accept=".json,application/json" hidden></label></div>
+    <p class="hint" id="impMsg">Восстановление заменяет текущие данные.</p>
+    <div class="btns"><button class="btn" value="cancel">Закрыть</button></div>`, f => { $('#expTxt', f).value = JSON.stringify(S); });
+}
+function importData(txt) {
+  try {
+    const d = JSON.parse(txt);
+    if (!Array.isArray(d.books) || !Array.isArray(d.links)) throw 0;
+    S = { ...S, ...d, marks: d.marks || [], set: { ...S.set, ...(d.set || {}) } };
+    save(); render(); dlg.close(); toast('Данные восстановлены');
+  } catch { const m = $('#impMsg'); if (m) m.textContent = 'Текст не похож на резервную копию.'; }
 }
 document.addEventListener('click', e => {
-  if (e.target.id === 'exp') {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
-    a.download = `biblioteka-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }
+  if (e.target.id === 'exp') copy($('#expTxt').value);
+  if (e.target.id === 'imp') importData($('#impTxt').value);
 });
 document.addEventListener('change', async e => {
-  if (e.target.id !== 'imp' || !e.target.files[0]) return;
-  try {
-    const d = JSON.parse(await e.target.files[0].text());
-    if (!Array.isArray(d.books) || !Array.isArray(d.links)) throw 0;
-    if (!confirm('Заменить текущие данные импортированными?')) return;
-    S = { ...S, ...d, marks: d.marks || [], set: { ...S.set, ...(d.set || {}) } };
-    save(); render(); dlg.close(); toast('Импортировано');
-  } catch { toast('Файл не подходит'); }
+  if (e.target.id === 'impFile' && e.target.files[0]) importData(await e.target.files[0].text());
 });
 
 /* ---------- читалка ---------- */
