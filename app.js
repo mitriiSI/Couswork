@@ -317,7 +317,7 @@ function openReader(id, para) {
   rt.innerHTML = R.paras.map((p, i) => `<p data-i="${i}">${esc(p)}<span class="pact"><button class="sm" data-p="copy">${ico('copy')}Абзац</button><button class="sm" data-p="mark">${ico('bookmark')}Закладка</button></span></p>`).join('');
   applyReaderSettings(); markParas(); updateDone();
   $('#reader').hidden = false; document.body.style.overflow = 'hidden';
-  $('#rset').hidden = $('#rmarks').hidden = true;
+  closePanels();
   const target = para ?? b.pos ?? 0;
   requestAnimationFrame(() => {
     const el = rt.children[Math.min(target, R.paras.length - 1)];
@@ -370,7 +370,7 @@ function addMark(para, quote) {
 function bookMarksDrawer() {
   const ms = S.marks.filter(m => m.bookId === R.book.id).sort((a, b) => a.para - b.para);
   const d = $('#rmarks');
-  d.innerHTML = `<h3>Закладки книги</h3>` + (ms.length ? ms.map(markCard).join('') : '<div class="empty"><span>Выделите текст и нажмите «В закладки».</span></div>');
+  d.innerHTML = `<div class="row" style="align-items:center"><h3 class="grow">Закладки книги</h3><button class="icon-btn" data-r="shut" aria-label="Закрыть">✕</button></div>` + (ms.length ? ms.map(markCard).join('') : '<div class="empty"><span>Выделите текст и нажмите «В закладки».</span></div>');
   hydrateIcons(d);
 }
 
@@ -455,12 +455,24 @@ document.addEventListener('click', e => {
   if (o && !e.target.closest('[data-stop]')) openReader(o.dataset.open);
 });
 
+/* панели читалки: ставим под шапкой, закрываем по тапу вне и по ✕ */
+function placePanels() {
+  const top = Math.round($('#reader .rbar').getBoundingClientRect().bottom + 10) + 'px';
+  $('#rset').style.top = top; $('#rmarks').style.top = top;
+}
+const closePanels = () => { $('#rset').hidden = true; $('#rmarks').hidden = true; };
+document.addEventListener('pointerdown', e => {
+  if ($('#reader').hidden || ($('#rset').hidden && $('#rmarks').hidden)) return;
+  if (e.target.closest('#rset, #rmarks, #reader .rbar, #dlg')) return;
+  closePanels();
+});
+$('#rmarks').addEventListener('click', e => { if (e.target.closest('[data-r=shut]')) closePanels(); });
 /* панель читалки */
 $('#reader .rbar').addEventListener('click', e => {
   const k = e.target.closest('[data-r]')?.dataset.r; if (!k) return;
   if (k === 'close') closeReader();
-  if (k === 'aa') { $('#rmarks').hidden = true; $('#rset').hidden = !$('#rset').hidden; }
-  if (k === 'marks') { $('#rset').hidden = true; bookMarksDrawer(); $('#rmarks').hidden = !$('#rmarks').hidden; }
+  if (k === 'aa') { $('#rmarks').hidden = true; $('#rset').hidden = !$('#rset').hidden; placePanels(); }
+  if (k === 'marks') { $('#rset').hidden = true; bookMarksDrawer(); $('#rmarks').hidden = !$('#rmarks').hidden; placePanels(); }
 });
 $('#reader').addEventListener('click', e => {
   if (e.target.closest('[data-r=done]')) {
@@ -474,7 +486,7 @@ $('#rset').addEventListener('click', e => {
   if (g && b) { S.set[g.dataset.seg] = b.dataset.v; applyReaderSettings(); save(); }
 });
 document.addEventListener('keydown', e => {
-  if (!$('#reader').hidden && e.key === 'Escape' && !dlg.open) closeReader();
+  if (!$('#reader').hidden && e.key === 'Escape' && !dlg.open) { if ($('#rset').hidden && $('#rmarks').hidden) closeReader(); else closePanels(); }
 });
 
 /* ---------- старт ---------- */
