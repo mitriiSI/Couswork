@@ -178,20 +178,79 @@ const markCard = m => `<article class="card glass">
   <button class="sm" data-act="note-mark" data-id="${m.id}">${ico('edit')}Заметка</button>
   <button class="sm danger" data-act="del-mark" data-id="${m.id}" aria-label="Удалить">${ico('trash')}</button></div></article>`;
 
+/* ---------- импорт Word / PDF ---------- */
+const loadScript = src => new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.append(s);
+});
+async function pdfText(buf) {
+  if (!window.pdfjsLib) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let out = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const items = (await (await pdf.getPage(n)).getTextContent()).items.filter(i => i.str !== undefined);
+    const rows = [];
+    for (const it of items) {
+      if (!it.str.trim() && !it.str) continue;
+      const y = it.transform[5], h = it.height || 10;
+      let r = rows.find(r => Math.abs(r.y - y) < h * 0.5);
+      if (!r) rows.push(r = { y, h, its: [] });
+      r.its.push(it);
+    }
+    rows.sort((a, c) => c.y - a.y);
+    const lines = [];
+    rows.forEach((r, k) => {
+      r.its.sort((a, c) => a.transform[4] - c.transform[4]);
+      let line = '', end = null;
+      for (const it of r.its) {
+        const x = it.transform[4];
+        if (end !== null && x - end > r.h * 0.2 && !/\s$/.test(line) && !/^\s/.test(it.str)) line += ' ';
+        line += it.str; end = x + (it.width || 0);
+      }
+      if (k && rows[k - 1].y - r.y > r.h * 1.6) lines.push('');
+      lines.push(line.trim());
+    });
+    let page = '', prev = '';
+    for (const l of lines) {
+      if (!l) { page += '\n\n'; prev = ''; continue; }
+      if (prev && /-$/.test(prev)) page = page.slice(0, -1) + l;
+      else page += (prev ? ' ' : '') + l;
+      prev = l;
+    }
+    out.push(page.trim());
+  }
+  return out.join('\n\n').replace(/\n{3,}/g, '\n\n');
+}
+async function extractFile(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.docx')) {
+    if (!window.mammoth) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+    return (await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })).value;
+  }
+  if (name.endsWith('.pdf') || file.type === 'application/pdf') return pdfText(await file.arrayBuffer());
+  return file.text();
+}
+
 /* ---------- формы ---------- */
 async function bookForm(b = {}) {
   const f = await openDlg(`<h3>${b.id ? 'Изменить книгу' : 'Новая книга'}</h3>
     <label>Название<input name="title" required autofocus value="${esc(b.title)}"></label>
     <div class="two"><label>Автор<input name="author" value="${esc(b.author)}"></label>
     <label>Статус<select name="status">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${(b.status || 'plan') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
-    <label>Текст книги (вставьте или загрузите файл .txt)<textarea name="text" placeholder="Вставьте текст сюда — потом его будет удобно читать и копировать">${esc(b.text)}</textarea></label>
-    <label>Файл .txt / .md<input type="file" name="file" accept=".txt,.md,text/plain"></label>
+    <label>Текст книги (вставьте или загрузите файл ниже)<textarea name="text" placeholder="Вставьте текст сюда — потом его будет удобно читать и копировать">${esc(b.text)}</textarea></label>
+    <label>Файл: Word (.docx), PDF, .txt, .md<input type="file" name="file" accept=".docx,.pdf,.txt,.md,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>
+    <p class="hint">Текст из файла извлекается в браузере и становится удобным для чтения и копирования. В PDF должен быть текстовый слой (сканы без распознавания не подойдут).</p>
     <label>Заметки<textarea name="notes" style="min-height:70px">${esc(b.notes)}</textarea></label>
     <div class="btns"><button class="btn" value="cancel">Отмена</button><button class="btn primary" value="ok">Сохранить</button></div>`);
   if (!f) return;
   const file = f.get('file');
   let text = f.get('text');
-  if (file && file.size) text = await file.text();
+  if (file && file.size) {
+    toast('Читаю файл…');
+    try { text = await extractFile(file); }
+    catch (err) { toast('Не удалось прочитать файл'); return; }
+    if (!text.trim()) { toast('В файле не найден текст'); return; }
+  }
   const title = f.get('title').trim() || (file?.name || 'Без названия').replace(/\.\w+$/, '');
   if (b.id) {
     Object.assign(b, { title, author: f.get('author').trim(), status: f.get('status'), notes: f.get('notes').trim() });
