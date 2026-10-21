@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050507">
+<title>Библиотека — книги и ссылки</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"><i class="g1"></i><i class="g2"></i><i class="g3"></i></div>
+
+<div id="app">
+  <header class="top glass">
+    <div class="top-row">
+      <button class="icon-btn" data-act="data" title="Данные: экспорт / импорт" aria-label="Данные"></button>
+      <div class="brand pill"><span data-ico="home"></span>Библиотека</div>
+      <button class="icon-btn primary" data-act="add" title="Добавить" aria-label="Добавить"></button>
+    </div>
+    <div class="top-row sub">
+      <label class="search pill"><span data-ico="search"></span><input id="q" type="search" placeholder="Поиск" autocomplete="off"></label>
+      <div class="pill stat" id="stat"></div>
+    </div>
+  </header>
+
+  <main id="view"></main>
+
+  <nav class="tabs glass" id="tabs">
+    <button data-tab="books"><span data-ico="book"></span><b>Книги</b></button>
+    <button data-tab="links"><span data-ico="link"></span><b>Ссылки</b></button>
+    <button data-tab="marks"><span data-ico="bookmark"></span><b>Закладки</b></button>
+  </nav>
+</div>
+
+<section id="reader" class="reader" hidden>
+  <div class="rbar glass">
+    <button class="icon-btn" data-r="close" aria-label="Назад"></button>
+    <div class="rtitle"><b id="rt"></b><small id="rp"></small></div>
+    <button class="icon-btn" data-r="marks" aria-label="Закладки книги"></button>
+    <button class="icon-btn" data-r="aa" aria-label="Оформление текста"></button>
+    <button class="icon-btn" data-r="done" aria-label="Прочитано"></button>
+  </div>
+  <div class="rprog"><i id="rbar"></i></div>
+  <div class="rscroll" id="rscroll"><article class="rtext" id="rtext"></article><div class="rend" id="rend"></div></div>
+
+  <div class="rpanel glass" id="rset" hidden>
+    <label>Размер <input type="range" min="14" max="30" step="1" data-set="size"><output></output></label>
+    <label>Интервал <input type="range" min="1.3" max="2.2" step="0.05" data-set="lh"><output></output></label>
+    <label>Ширина <input type="range" min="480" max="1000" step="20" data-set="width"><output></output></label>
+    <div class="seg" data-seg="font"><button data-v="sans">Без засечек</button><button data-v="serif">С засечками</button></div>
+    <div class="seg" data-seg="tone"><button data-v="soft">Мягкий</button><button data-v="bright">Яркий</button></div>
+  </div>
+
+  <aside class="rdrawer glass" id="rmarks" hidden></aside>
+  <div class="seltools glass" id="seltools" hidden>
+    <button data-sel="copy">Копировать</button>
+    <button data-sel="mark">В закладки</button>
+  </div>
+</section>
+
+<dialog id="dlg"></dialog>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
