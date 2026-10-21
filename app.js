@@ -62,7 +62,7 @@ const store = {
   },
 };
 
-let S = { books: [], links: [], marks: [], set: { size: 19, lh: 1.75, width: 720, font: 'sans', tone: 'soft' } };
+let S = { books: [], links: [], marks: [], set: { size: 19, lh: 1.75, width: 720, font: 'serif', tone: 'paper' } };
 let saveT;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => store.save(S), 250); };
 const ui = { tab: 'books', bf: 'all', lf: 'all', tag: '', q: '' };
@@ -314,14 +314,22 @@ function openReader(id, para) {
   if (!b.text) return bookForm(b);
   R.book = b; R.paras = paras(b.text);
   $('#rt').textContent = b.title;
-  rt.innerHTML = R.paras.map((p, i) => `<p data-i="${i}">${esc(p)}<span class="pact"><button class="sm" data-p="copy">${ico('copy')}Абзац</button><button class="sm" data-p="mark">${ico('bookmark')}Закладка</button></span></p>`).join('');
+  const sheets = []; let cur = [], len = 0;
+  R.paras.forEach((p, i) => {
+    cur.push(`<p data-i="${i}">${esc(p)}<span class="pact"><button class="sm" data-p="copy">${ico('copy')}Абзац</button><button class="sm" data-p="mark">${ico('bookmark')}Закладка</button></span></p>`);
+    len += p.length + 120;
+    if (len > 2400) { sheets.push(cur); cur = []; len = 0; }
+  });
+  if (cur.length) sheets.push(cur);
+  rt.innerHTML = sheets.map((c, n) => `<section class="sheet">${c.join('')}<footer>${n + 1}</footer></section>`).join('');
+  R.els = $$('p', rt);
   applyReaderSettings(); markParas(); updateDone();
   $('#reader').hidden = false; document.body.style.overflow = 'hidden';
   closePanels();
   const target = para ?? b.pos ?? 0;
   requestAnimationFrame(() => {
-    const el = rt.children[Math.min(target, R.paras.length - 1)];
-    if (el && target > 0) { rs.scrollTop = el.offsetTop - 20; if (para != null) { el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); } }
+    const el = R.els[Math.min(target, R.paras.length - 1)];
+    if (el && target > 0) { rs.scrollTop = topOf(el) - 20; if (para != null) { el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); } }
     else rs.scrollTop = 0;
     trackScroll();
   });
@@ -334,26 +342,27 @@ function closeReader() {
 function applyReaderSettings() {
   const s = S.set;
   rt.style.setProperty('--size', s.size + 'px'); rt.style.setProperty('--lh', s.lh); rt.style.setProperty('--width', s.width + 'px');
-  rt.classList.toggle('serif', s.font === 'serif'); rt.classList.toggle('bright', s.tone === 'bright');
+  rt.classList.toggle('sans', s.font === 'sans'); rt.classList.toggle('dark', s.tone === 'dark');
   $$('#rset [data-set]').forEach(i => { i.value = s[i.dataset.set]; i.nextElementSibling.textContent = i.dataset.set === 'size' ? s.size + ' px' : i.dataset.set === 'width' ? s.width : s.lh; });
   $$('#rset .seg').forEach(g => $$('button', g).forEach(b => b.classList.toggle('on', s[g.dataset.seg] === b.dataset.v)));
 }
 function markParas() {
   const set = new Set(S.marks.filter(m => m.bookId === R.book.id).map(m => m.para));
-  $$('p', rt).forEach(p => p.classList.toggle('marked', set.has(+p.dataset.i)));
+  R.els.forEach(p => p.classList.toggle('marked', set.has(+p.dataset.i)));
 }
 function updateDone() {
   const d = R.book.status === 'done';
   const btn = $('[data-r=done]'); btn.classList.toggle('on', d); btn.title = d ? 'Снять отметку «прочитано»' : 'Отметить прочитанной';
 }
+const topOf = el => el.getBoundingClientRect().top - rs.getBoundingClientRect().top + rs.scrollTop;
 function trackScroll() {
   cancelAnimationFrame(R.raf);
   R.raf = requestAnimationFrame(() => {
     if (!R.book) return;
     const max = rs.scrollHeight - rs.clientHeight;
     const pr = max > 0 ? Math.min(1, rs.scrollTop / max) : 1;
-    let lo = 0, hi = rt.children.length - 1;
-    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (rt.children[m].offsetTop - 30 <= rs.scrollTop) lo = m; else hi = m - 1; }
+    let lo = 0, hi = R.els.length - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (topOf(R.els[m]) - 30 <= rs.scrollTop) lo = m; else hi = m - 1; }
     R.cur = lo; R.book.pos = lo; R.book.progress = pr;
     $('#rbar').style.width = pr * 100 + '%';
     $('#rp').textContent = `${Math.round(pr * 100)}% · абзац ${lo + 1} из ${R.paras.length}`;
@@ -441,7 +450,7 @@ const actions = {
   'fav-link'(id) { const l = find(S.links, id); l.fav = !l.fav; save(); render(); },
   'edit-link': id => linkForm(find(S.links, id)),
   async 'del-link'(id) { if (await confirmDlg('Удалить ссылку?')) { S.links = S.links.filter(l => l.id !== id); save(); render(); } },
-  'goto-mark'(id) { const m = find(S.marks, id); if (R.book) { rs.scrollTop = rt.children[m.para].offsetTop - 20; $('#rmarks').hidden = true; } else openReader(m.bookId, m.para); },
+  'goto-mark'(id) { const m = find(S.marks, id); if (R.book) { rs.scrollTop = topOf(R.els[m.para]) - 20; $('#rmarks').hidden = true; } else openReader(m.bookId, m.para); },
   'copy-mark': id => copy(find(S.marks, id).quote),
   async 'note-mark'(id) { const m = find(S.marks, id); const v = await askText('Заметка к закладке', m.note); if (v !== null) { m.note = v; save(); R.book ? bookMarksDrawer() : render(); } },
   'del-mark'(id) { S.marks = S.marks.filter(m => m.id !== id); save(); if (R.book) { markParas(); bookMarksDrawer(); } else render(); },
