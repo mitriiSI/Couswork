@@ -26,25 +26,62 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt pyinstaller
 
-      - name: Build ScreenRecorder.exe
+      - name: Build the program folder (for the installer)
         run: >
-          python -m PyInstaller --noconfirm --clean --onefile --windowed
+          python -m PyInstaller --noconfirm --clean --onedir --windowed
           --name ScreenRecorder --icon icon.ico --add-data "icon.ico;."
           --collect-data soundcard --collect-data imageio_ffmpeg
+          --distpath dist/app --workpath build/app
           main.py
 
-      - name: Self-test the .exe (records the screen for a few seconds)
+      - name: Build portable ScreenRecorder.exe
+        run: >
+          python -m PyInstaller --noconfirm --onefile --windowed
+          --name ScreenRecorder --icon icon.ico --add-data "icon.ico;."
+          --collect-data soundcard --collect-data imageio_ffmpeg
+          --distpath dist --workpath build/onefile
+          main.py
+
+      - name: Build installer ScreenRecorder-Setup.exe
         shell: pwsh
         run: |
-          $dir = Join-Path $env:RUNNER_TEMP "selftest"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc "/DMyAppVersion=1.0.${{ github.run_number }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Self-test the portable .exe
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "selftest-portable"
           $p = Start-Process -FilePath "dist\ScreenRecorder.exe" -ArgumentList "--selftest", "`"$dir`"" -Wait -PassThru
           Get-Content (Join-Path $dir "selftest.txt")
           if ($p.ExitCode -ne 0) { exit 1 }
 
+      - name: Install silently, self-test the installed program, uninstall
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\ScreenRecorder-Setup.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "installer exit code $($p.ExitCode)"; exit 1 }
+          $appDir = Join-Path $env:LOCALAPPDATA "Programs\ScreenRecorder"
+          $exe = Join-Path $appDir "ScreenRecorder.exe"
+          if (-not (Test-Path $exe)) { Write-Error "not installed to $appDir"; exit 1 }
+          $dir = Join-Path $env:RUNNER_TEMP "selftest-installed"
+          $p = Start-Process -FilePath $exe -ArgumentList "--selftest", "`"$dir`"" -Wait -PassThru
+          Get-Content (Join-Path $dir "selftest.txt")
+          if ($p.ExitCode -ne 0) { exit 1 }
+          $p = Start-Process -FilePath (Join-Path $appDir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if (Test-Path $exe) { Write-Error "uninstall left the program behind"; exit 1 }
+
       - uses: actions/upload-artifact@v4
         with:
           name: ScreenRecorder
-          path: screen-recorder/dist/ScreenRecorder.exe
+          path: |
+            screen-recorder/dist/ScreenRecorder-Setup.exe
+            screen-recorder/dist/ScreenRecorder.exe
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -54,5 +91,10 @@ jobs:
           target_commitish: ${{ github.sha }}
           body: |
             Программа для записи экрана, звука компьютера, микрофона и веб-камеры (Windows 10/11).
-            Скачайте **ScreenRecorder.exe** ниже и запустите его — установка не нужна.
-          files: screen-recorder/dist/ScreenRecorder.exe
+            Работает без интернета.
+
+            - **ScreenRecorder-Setup.exe** — установщик: ставит программу, создаёт ярлыки в меню «Пуск» и на рабочем столе. Права администратора не нужны.
+            - **ScreenRecorder.exe** — переносная версия без установки.
+          files: |
+            screen-recorder/dist/ScreenRecorder-Setup.exe
+            screen-recorder/dist/ScreenRecorder.exe
