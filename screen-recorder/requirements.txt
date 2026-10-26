@@ -1,0 +1,5 @@
+numpy>=1.26
+mss==10.2.0
+soundcard==0.4.6
+opencv-python-headless==5.0.0.93
+imageio-ffmpeg==0.6.0
